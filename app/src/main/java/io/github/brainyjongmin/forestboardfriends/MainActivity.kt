@@ -55,7 +55,7 @@ class MainActivity : ComponentActivity() {
     var playerName by remember{mutableStateOf(prefs.getString("player_name","") ?: "")}
     var draft by remember{mutableStateOf("")}
     if(playerName.isBlank()){
-        MaterialTheme(colorScheme=lightColorScheme(primary=Forest,background=Cream)){Surface(Modifier.fillMaxSize(),color=Cream){Column(Modifier.padding(28.dp),horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.Center){
+        MaterialTheme(colorScheme=lightColorScheme(primary=Forest,background=Cream)){Surface(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing),color=Cream){Column(Modifier.padding(28.dp),horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.Center){
             Image(painterResource(R.drawable.forest_friends),null,Modifier.fillMaxWidth().height(220.dp),contentScale=ContentScale.Fit)
             Text("숲속 보드 친구들",fontSize=30.sp,fontWeight=FontWeight.Bold,color=Bark)
             Spacer(Modifier.height(20.dp));Text("친구야, 이름을 알려줘!",fontSize=20.sp)
@@ -72,7 +72,7 @@ class MainActivity : ComponentActivity() {
     var onePlayer by remember{mutableStateOf(true)};var difficulty by remember{mutableStateOf(Difficulty.EASY)};var boardSize by remember{mutableIntStateOf(9)}
     val context=LocalContext.current;val coach=remember{CoachManager(context)};DisposableEffect(Unit){onDispose{coach.close()}}
     LaunchedEffect(name){coach.speak("$name, 숲속 보드 친구들에 온 걸 환영해! 오늘도 즐겁게 놀아 보자!")}
-    Surface(Modifier.fillMaxSize(),color=Cream){when(page){
+    Surface(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing),color=Cream){when(page){
         Page.HOME->HomeScreen(name,onSelect={kind=it;page=if(it==GameKind.BLOCK)Page.BLOCK else Page.SETUP},onModel={page=Page.MODEL},onRename=rename)
         Page.SETUP->SetupScreen(kind,onePlayer,{onePlayer=it},difficulty,{difficulty=it},boardSize,{boardSize=it},{page=Page.HOME},{page=Page.GAME})
         Page.GAME->BoardGameScreen(name,kind,onePlayer,difficulty,boardSize,coach){page=Page.HOME}
@@ -110,15 +110,19 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-@Composable private fun GameBoard(game:BoardGame,selected:Pos?,hint:Pos?,revision:Int,onTap:(Pos)->Unit){
+@Composable private fun ColumnScope.GameBoard(game:BoardGame,selected:Pos?,hint:Pos?,revision:Int,onTap:(Pos)->Unit){
     val bg=if(game is ChessGame)Color(0xFFEAD7B0)else Color(0xFFD9B779);val line=Color(0xFF5D4037)
-    Canvas(Modifier.fillMaxWidth().aspectRatio(game.cols.toFloat()/game.rows).padding(4.dp).pointerInput(game,revision){detectTapGestures{point->val c=(point.x/size.width*game.cols).toInt().coerceIn(0,game.cols-1);val r=(point.y/size.height*game.rows).toInt().coerceIn(0,game.rows-1);onTap(Pos(r,c))}}){
+    BoxWithConstraints(Modifier.weight(1f).fillMaxWidth(),contentAlignment=Alignment.Center){
+    val ratio=game.cols.toFloat()/game.rows
+    val boardSize=if(maxWidth/ratio<=maxHeight)Modifier.fillMaxWidth().aspectRatio(ratio) else Modifier.fillMaxHeight().aspectRatio(ratio)
+    Canvas(boardSize.padding(4.dp).pointerInput(game,revision){detectTapGestures{point->val c=(point.x/size.width*game.cols).toInt().coerceIn(0,game.cols-1);val r=(point.y/size.height*game.rows).toInt().coerceIn(0,game.rows-1);onTap(Pos(r,c))}}){
         drawRect(bg);val cw=size.width/game.cols;val ch=size.height/game.rows
         for(r in 0..game.rows)drawLine(line,Offset(0f,r*ch),Offset(size.width,r*ch),2f)
         for(c in 0..game.cols)drawLine(line,Offset(c*cw,0f),Offset(c*cw,size.height),2f)
         if(selected!=null)drawRect(Color(0x663F6E52),Offset(selected.col*cw,selected.row*ch),androidx.compose.ui.geometry.Size(cw,ch))
         if(hint!=null)drawCircle(Color(0xFFFFD54F),minOf(cw,ch)*.22f,Offset((hint.col+.5f)*cw,(hint.row+.5f)*ch))
         for(r in 0 until game.rows)for(c in 0 until game.cols)game.cell(Pos(r,c))?.let{cell->val center=Offset((c+.5f)*cw,(r+.5f)*ch);val radius=minOf(cw,ch)*.38f;drawCircle(if(cell.owner==1)Color(0xFFF7F3E8)else Color(0xFF343434),radius,center);drawCircle(if(cell.owner==1)Bark else Color.White,radius,center,style=Stroke(2f));if(cell.label.isNotEmpty())drawIntoCanvas{canvas->val paint=android.graphics.Paint().apply{color=if(cell.owner==1)android.graphics.Color.rgb(100,55,40)else android.graphics.Color.WHITE;textSize=radius*1.3f;textAlign=android.graphics.Paint.Align.CENTER;isAntiAlias=true;typeface=android.graphics.Typeface.DEFAULT_BOLD};canvas.nativeCanvas.drawText(cell.label,center.x,center.y-(paint.ascent()+paint.descent())/2,paint)}}
+    }
     }
 }
 

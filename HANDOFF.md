@@ -3,8 +3,8 @@
 ## 링크
 
 - 소스 저장소: https://github.com/BrainyJongmin/forest-board-friends
-- 가족용 APK: https://github.com/BrainyJongmin/forest-board-friends/releases/download/v1.0.0/ForestBoardFriends-v1.0.0.apk
-- 릴리스 안내: https://github.com/BrainyJongmin/forest-board-friends/releases/tag/v1.0.0
+- 가족용 APK: https://github.com/BrainyJongmin/forest-board-friends/releases/latest
+- 릴리스 안내: https://github.com/BrainyJongmin/forest-board-friends/releases/latest
 
 ## 구현 내용
 
