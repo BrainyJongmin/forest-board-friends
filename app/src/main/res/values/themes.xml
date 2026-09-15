@@ -1,0 +1,9 @@
+<resources>
+    <style name="Theme.ForestBoardFriends" parent="android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:fontFamily">sans</item>
+        <item name="android:colorAccent">#41765A</item>
+        <item name="android:navigationBarColor">#F5EEDB</item>
+        <item name="android:statusBarColor">#DCE8D2</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+</resources>
