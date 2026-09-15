@@ -31,4 +31,9 @@ class GamesTest {
     @Test fun blockPuzzleMovesAndResets(){
         val g=BlockPuzzleGame(Random(1));val start=g.cells();assertTrue(g.move(-1,0));assertNotEquals(start,g.cells());g.hardDrop();assertTrue(g.board.any{it!=0});g.reset();assertTrue(g.board.all{it==0});assertEquals(0,g.score)
     }
+
+    @Test fun lineBoardsSnapTouchesToIntersections(){
+        assertEquals(0,boardIndex(10f,100f,9,10f));assertEquals(4,boardIndex(50f,100f,9,10f));assertEquals(8,boardIndex(90f,100f,9,10f))
+        assertEquals(0,boardIndex(1f,80f,8,0f));assertEquals(7,boardIndex(79f,80f,8,0f))
+    }
 }
