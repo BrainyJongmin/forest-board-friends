@@ -3,7 +3,10 @@
 package io.github.brainyjongmin.forestboardfriends
 
 import android.app.Activity
+import android.media.AudioAttributes
 import android.media.AudioManager
+import android.media.AudioFormat
+import android.media.AudioTrack
 import android.media.ToneGenerator
 import android.os.Bundle
 import android.os.SystemClock
@@ -11,6 +14,8 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -57,18 +62,28 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlin.math.PI
+import kotlin.math.pow
 import kotlin.math.roundToInt
+import kotlin.math.sin
+import kotlin.random.Random
 
 private val Forest = Color(0xFF3F6E52)
 private val Cream = Color(0xFFFFF8E8)
 private val Bark = Color(0xFF6D4C41)
 private class GameSounds{
     private val tone=runCatching{ToneGenerator(AudioManager.STREAM_MUSIC,45)}.getOrNull()
+    private val music=audioTrack(forestMelody(),true)?.apply{setVolume(.12f)}
+    private val applause=audioTrack(applause(),false)?.apply{setVolume(.8f)}
     fun move(){tone?.startTone(ToneGenerator.TONE_PROP_BEEP,65)}
     fun menu(){tone?.startTone(ToneGenerator.TONE_PROP_ACK,90)}
     fun block(){tone?.startTone(ToneGenerator.TONE_PROP_BEEP2,100)}
-    fun finish(){tone?.startTone(ToneGenerator.TONE_PROP_PROMPT,350)}
-    fun close(){tone?.release()}
+    fun music(play:Boolean){runCatching{if(play&&music?.playState!=AudioTrack.PLAYSTATE_PLAYING){music?.setPlaybackHeadPosition(0);music?.play()}else if(!play)music?.pause()}}
+    fun finish(){tone?.startTone(ToneGenerator.TONE_PROP_PROMPT,350);runCatching{applause?.pause();applause?.setPlaybackHeadPosition(0);applause?.play()}}
+    fun close(){tone?.release();music?.release();applause?.release()}
+    private fun audioTrack(samples:ShortArray,loop:Boolean)=runCatching{AudioTrack.Builder().setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_GAME).setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build()).setAudioFormat(AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_16BIT).setSampleRate(22_050).setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build()).setTransferMode(AudioTrack.MODE_STATIC).setBufferSizeInBytes(samples.size*2).build().apply{write(samples,0,samples.size);if(loop)setLoopPoints(0,samples.size,-1)}}.getOrNull()
+    private fun forestMelody():ShortArray{val notes=intArrayOf(64,67,71,74,71,67,64,67,62,66,69,74,69,66,62,66,60,64,67,72,67,64,60,64,62,67,71,74,71,67,66,62);val beat=.23;val rate=22_050;return ShortArray((notes.size*beat*rate).toInt()){i->val step=(i/(beat*rate)).toInt().coerceAtMost(notes.lastIndex);val local=i/rate.toDouble()-step*beat;val f=440.0*2.0.pow((notes[step]-69)/12.0);val bass=440.0*2.0.pow((notes[step/4*4]-81)/12.0);val envelope=minOf(1.0,local/.018)*(1-local/beat*.18);((sin(2*PI*f*i/rate)+sin(PI*f*i/rate)*.22+sin(2*PI*bass*i/rate)*.3)*envelope*4_200).toInt().coerceIn(-32767,32767).toShort()}}
+    private fun applause():ShortArray{val rate=22_050;val out=DoubleArray((2.4*rate).toInt());val random=Random(7);repeat(24){val start=((it*.09+random.nextDouble()*.18)*rate).toInt();val length=(.13*rate).toInt();var last=0.0;for(j in 0 until length)if(start+j<out.size){val noise=random.nextDouble()*2-1;val crisp=noise-last*.65;last=noise;out[start+j]+=crisp*(1-j.toDouble()/length).pow(2)*9_000}};return ShortArray(out.size){out[it].toInt().coerceIn(-24_000,24_000).toShort()}}
 }
 enum class GameKind(val title:String,val emoji:String){GO("바둑","⚫"),JANGGI("장기","將"),CHESS("체스","♞"),OMOK("오목","●"),BLOCK("엄마의 블록 퍼즐","▦")}
 private enum class Page{HOME,SETUP,GAME,BLOCK,MODEL}
@@ -103,6 +118,8 @@ class MainActivity : ComponentActivity() {
     var onePlayer by remember{mutableStateOf(true)};var difficulty by remember{mutableStateOf(Difficulty.EASY)};var boardSize by remember{mutableIntStateOf(9)}
     var confirmGameExit by remember{mutableStateOf(false)};var lastBack by remember{mutableLongStateOf(0L)}
     val context=LocalContext.current;val coach=remember{CoachManager(context)};val sounds=remember{GameSounds()};DisposableEffect(Unit){onDispose{coach.close();sounds.close()}}
+    LaunchedEffect(page){sounds.music(page==Page.GAME||page==Page.BLOCK)}
+    DisposableEffect(page){val lifecycle=(context as ComponentActivity).lifecycle;val observer=LifecycleEventObserver{_,event->when(event){Lifecycle.Event.ON_START->sounds.music(page==Page.GAME||page==Page.BLOCK);Lifecycle.Event.ON_STOP->sounds.music(false);else->{}}};lifecycle.addObserver(observer);onDispose{lifecycle.removeObserver(observer)}}
     LaunchedEffect(name){coach.speak("$name, 숲속 보드 친구들에 온 걸 환영해! 오늘도 즐겁게 놀아 보자!")}
     fun leaveGame(){if(!confirmGameExit)sounds.menu();confirmGameExit=true}
     fun open(next:Page){sounds.menu();page=next}
@@ -139,19 +156,20 @@ class MainActivity : ComponentActivity() {
     var round by remember{mutableIntStateOf(0)}
     val game=remember(kind,size,round){when(kind){GameKind.GO->GoGame(size);GameKind.JANGGI->JanggiGame();GameKind.CHESS->ChessGame();else->OmokGame()}}
     var selected by remember{mutableStateOf<Pos?>(null)};var revision by remember{mutableIntStateOf(0)};var hint by remember{mutableStateOf<Pos?>(null)};var speech by remember{mutableStateOf("$name, 천천히 생각해 보자!")};var question by remember{mutableStateOf("")};val scope=rememberCoroutineScope()
-    fun maybeAi(){if(one&&game.winner==null&&game.currentPlayer==2)scope.launch{delay(350);val move=runCatching{game.hint(difficulty)}.getOrNull();val moved=if(move!=null)game.play(move)else game is GoGame&&game.pass();if(moved){moveSound();speech=if(move==null)"$name, 나는 한 수 쉬었어. 이제 네 차례야!" else "$name, 내 차례가 끝났어. 이제 네 차례야!";revision++}}}
-    LaunchedEffect(Unit){maybeAi()}
+    fun maybeAi(){if(one&&game.winner==null&&game.currentPlayer==2)scope.launch{delay(350);val move=runCatching{game.hint(difficulty)}.getOrNull();val moved=if(move!=null)game.play(move)else game is GoGame&&game.pass();if(moved){moveSound();speech=if(move==null)"$name, 나는 한 수 쉬었어. 이제 네 차례야!" else "$name, 내 차례가 끝났어. 이제 네 차례야!";coach.speak(speech);revision++}}}
+    LaunchedEffect(game){val text="$name, ${kind.title} 시작해 볼까? 네 차례야!";speech=text;coach.speak(text);maybeAi()}
     val legalTargets=selected?.let{game.legalMoves(it).map(GameMove::to).toSet()}.orEmpty()
-    LaunchedEffect(game.winner){if(game.winner!=null)endSound()}
+    LaunchedEffect(revision){if(revision>0&&revision%4==0&&game.winner==null){delay(500);val cheers=listOf("$name, 지금 흐름 좋은데? 네 생각대로 해 봐!","천천히 봐도 괜찮아. 분명 좋은 수가 보일 거야!","오, 재미있어지고 있어! 다음 수는 어디가 좋을까?","실수해도 괜찮아. 한 수씩 같이 가 보자!");speech=cheers[revision/4%cheers.size];coach.speak(speech)}}
+    LaunchedEffect(game.winner){game.winner?.let{endSound();val text=if(!one||it==1)"와, $name 정말 멋졌어! 한 판 더 해 볼까?" else "$name, 아쉬웠지? 그래도 끝까지 잘했어. 다시 하면 더 잘할 수 있어!";speech=text;coach.speak(text)}}
     val tap:(Pos)->Unit={p->if(game.winner==null&&(!one||game.currentPlayer!=2)){val from=selected;val move=if(kind==GameKind.GO||kind==GameKind.OMOK)GameMove(to=p)else GameMove(from,p);if(game.play(move)){moveSound();selected=null;hint=null;speech="$name, 좋은 수야!";revision++;maybeAi()}else if(game.cell(p)?.owner==game.currentPlayer){selected=p;hint=null;val targets=game.legalMoves(p);if(targets.isEmpty())speech=if(game is ChessGame&&game.cell(p)?.label in setOf("♕","♛"))"$name, 퀸은 직선과 대각선으로 가지만 앞의 말을 뛰어넘을 수 없어. 길을 먼저 열어 줘!" else "$name, 이 말은 지금 이동할 수 있는 곳이 없어."}else speech="$name, 그곳에는 둘 수 없어."}}
     val header: @Composable ()->Unit={Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){TextButton(back){Text("‹ 홈")};Text(kind.title,fontSize=24.sp,fontWeight=FontWeight.Bold,color=Bark,modifier=Modifier.weight(1f),textAlign=TextAlign.Center);Spacer(Modifier.width(55.dp))}}
     val controls: @Composable ()->Unit={Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceEvenly){OutlinedButton(onClick={if(game.undo()){if(one)game.undo();selected=null;hint=null;revision++}}){Text("무르기")};if(kind==GameKind.GO||kind==GameKind.JANGGI)OutlinedButton(onClick={if(game.pass()){revision++;maybeAi()}}){Text("한 수 쉼")};Button(onClick={val m=runCatching{game.hint(difficulty)}.getOrNull();hint=m?.to;selected=m?.from;speech=when{m!=null->"$name, 빛나는 칸을 살펴봐!";game is GoGame->"$name, 지금은 한 수 쉬는 것도 좋아.";else->"지금은 추천할 수가 없어."}}){Text("힌트")}}}
-    val coachPanel: @Composable ()->Unit={Card(Modifier.fillMaxWidth().padding(top=8.dp),colors=CardDefaults.cardColors(containerColor=Color.White),shape=RoundedCornerShape(18.dp)){Column(Modifier.padding(12.dp)){Text("🦊 $speech",fontSize=16.sp);Row(verticalAlignment=Alignment.CenterVertically){OutlinedTextField(question,{question=it.take(120)},Modifier.weight(1f),placeholder={Text("게임이나 오늘 일 물어보기")},singleLine=true);IconButton(onClick={val q=question.trim();if(q.isNotEmpty()){speech="생각 중...";coach.answer(name,kind.title,q,"현재 차례는 ${game.status}"){speech=it}}}){Text("➤",fontSize=22.sp)}}}}}
+    val coachPanel: @Composable ()->Unit={Card(Modifier.fillMaxWidth().padding(top=8.dp),colors=CardDefaults.cardColors(containerColor=Color.White),shape=RoundedCornerShape(18.dp)){Column(Modifier.padding(12.dp)){Text("🦊 $speech",fontSize=16.sp);Row(verticalAlignment=Alignment.CenterVertically){OutlinedTextField(question,{question=it.take(120)},Modifier.weight(1f),placeholder={Text("게임이나 오늘 일 물어보기")},singleLine=true);IconButton(onClick={val q=question.trim();if(q.isNotEmpty()){question="";speech="음, 잠깐 생각해 볼게!";coach.answer(name,kind.title,q,"현재 차례는 ${game.status}"){speech=it}}}){Text("➤",fontSize=22.sp)}}}}}
     BoxWithConstraints(Modifier.fillMaxSize()){
         if(maxWidth>maxHeight){Row(Modifier.fillMaxSize()){Column(Modifier.weight(1f).fillMaxHeight().padding(start=12.dp),horizontalAlignment=Alignment.CenterHorizontally){header();GameBoard(game,selected,hint,legalTargets,revision,tap)};Column(Modifier.widthIn(min=280.dp,max=420.dp).fillMaxHeight().verticalScroll(rememberScrollState()).padding(horizontal=12.dp,vertical=8.dp),horizontalAlignment=Alignment.CenterHorizontally){Text(game.status,fontSize=18.sp,fontWeight=FontWeight.Bold,color=Forest);Spacer(Modifier.height(12.dp));controls();coachPanel()}}}
         else Column(Modifier.fillMaxSize().padding(horizontal=12.dp),horizontalAlignment=Alignment.CenterHorizontally){header();Text(game.status,fontSize=18.sp,fontWeight=FontWeight.Bold,color=Forest);Spacer(Modifier.height(8.dp));GameBoard(game,selected,hint,legalTargets,revision,tap);controls();coachPanel()}
     }
-    game.winner?.let{winner->val title=when{winner==0->"멋진 무승부!";!one->"${name(winner)} 승리!";winner==1->"$name 승리!";else->"이번엔 동물 친구 승리!"};GameOverDialog(title,if(winner==1)"🎉 정말 멋진 경기였어!" else "🌟 다시 도전하면 더 강해질 거야!",onRestart={round++;selected=null;hint=null;speech="$name, 새 경기를 시작하자!"},onHome=home)}
+    game.winner?.let{winner->val celebrate=!one||winner==1;val title=when{winner==0->"멋진 무승부!";!one->"${name(winner)} 승리!";winner==1->"$name 승리!";else->"이번엔 동물 친구 승리!"};GameOverDialog(title,if(celebrate)"동물 친구들이 박수치고 있어! 정말 멋진 경기였어." else "동물 친구들이 꼭 안아 줄게. 끝까지 해낸 것도 정말 멋져!",celebrate,onRestart={round++;selected=null;hint=null;speech="$name, 새 경기를 시작하자!"},onHome=home)}
 }
 
 @Composable private fun ColumnScope.GameBoard(game:BoardGame,selected:Pos?,hint:Pos?,legalTargets:Set<Pos>,revision:Int,onTap:(Pos)->Unit){
@@ -187,24 +205,25 @@ class MainActivity : ComponentActivity() {
 
 internal fun boardIndex(value:Float,length:Float,count:Int,margin:Float)=if(margin==0f)(value/length*count).toInt().coerceIn(0,count-1)else(((value-margin)/(length-margin*2)*(count-1)).roundToInt()).coerceIn(0,count-1)
 
-@Composable private fun GameOverDialog(title:String,message:String,onRestart:()->Unit,onHome:()->Unit){
+@Composable private fun GameOverDialog(title:String,message:String,celebrate:Boolean=true,onRestart:()->Unit,onHome:()->Unit){
     val motion=rememberInfiniteTransition(label="friends")
     val bounce by motion.animateFloat(-7f,7f,infiniteRepeatable(tween(550),RepeatMode.Reverse),label="bounce")
     val tilt by motion.animateFloat(-2f,2f,infiniteRepeatable(tween(700),RepeatMode.Reverse),label="tilt")
-    AlertDialog(onDismissRequest={},title={Text(title)},text={Column(horizontalAlignment=Alignment.CenterHorizontally){Text("✨  🎊  ✨",fontSize=26.sp);Image(painterResource(R.drawable.forest_friends),"축하하는 숲속 친구들",Modifier.fillMaxWidth().height(120.dp).graphicsLayer{translationY=bounce;rotationZ=tilt},contentScale=ContentScale.Fit);Text(message,fontSize=17.sp,textAlign=TextAlign.Center)}},confirmButton={Button(onClick=onRestart){Text("다시 하기")}},dismissButton={TextButton(onClick=onHome){Text("홈으로")}})
+    AlertDialog(onDismissRequest={},title={Text(title)},text={Column(horizontalAlignment=Alignment.CenterHorizontally){Text(if(celebrate)"✨  🎊  👏  🎊  ✨" else "💛  🌟  💛",fontSize=26.sp);Image(painterResource(R.drawable.forest_friends),if(celebrate)"축하하는 숲속 친구들" else "위로하는 숲속 친구들",Modifier.fillMaxWidth().height(120.dp).graphicsLayer{translationY=bounce;rotationZ=tilt},contentScale=ContentScale.Fit);Text(message,fontSize=17.sp,textAlign=TextAlign.Center)}},confirmButton={Button(onClick=onRestart){Text("다시 하기")}},dismissButton={TextButton(onClick=onHome){Text("그만하기")}})
 }
 
 @Composable private fun ModelScreen(coach:CoachManager,back:()->Unit){Column(Modifier.fillMaxSize().padding(24.dp),horizontalAlignment=Alignment.CenterHorizontally){Text("🦊 AI 코치",fontSize=30.sp,fontWeight=FontWeight.Bold,color=Bark);Spacer(Modifier.height(20.dp));Text(coach.status,fontSize=18.sp,textAlign=TextAlign.Center);Spacer(Modifier.height(12.dp));if(!coach.ready)Button(onClick={coach.download()}){Text("약 736MB 모델 받기")}else OutlinedButton(onClick={coach.deleteModel()}){Text("모델 지우기")};Text("게임뿐 아니라 학교, 취미, 기분 같은 가벼운 일상대화도 할 수 있습니다. 대화는 기기 밖으로 전송되지 않습니다.",fontSize=14.sp,color=Color.Gray,modifier=Modifier.padding(16.dp));Spacer(Modifier.weight(1f));TextButton(back){Text("돌아가기")}}
 }
 
 @Composable private fun BlockScreen(prefs:android.content.SharedPreferences,sounds:GameSounds,back:()->Unit,home:()->Unit){
-    val game=remember{BlockPuzzleGame()};var revision by remember{mutableIntStateOf(0)};var best by remember{mutableIntStateOf(prefs.getInt("block_best",0))}
+    var itemMode by remember{mutableStateOf<Boolean?>(null)};val game=remember(itemMode){BlockPuzzleGame(itemsEnabled=itemMode==true)};var revision by remember{mutableIntStateOf(0)};var best by remember{mutableIntStateOf(prefs.getInt("block_best",0))}
     val glowMotion=rememberInfiniteTransition(label="blockGlow");val activeGlow by glowMotion.animateFloat(.72f,1f,infiniteRepeatable(tween(420),RepeatMode.Reverse),label="activeGlow")
-    LaunchedEffect(revision,game.paused,game.gameOver){if(!game.paused&&!game.gameOver){delay((750-(game.level-1)*55).coerceAtLeast(100).toLong());if(!game.tick())sounds.block();if(game.score>best){best=game.score;prefs.edit().putInt("block_best",best).apply()};revision++}}
+    LaunchedEffect(revision,game.paused,game.gameOver,itemMode){if(itemMode!=null&&!game.paused&&!game.gameOver){delay(game.dropDelay.toLong());if(!game.tick())sounds.block();if(game.score>best){best=game.score;prefs.edit().putInt("block_best",best).apply()};revision++}}
     LaunchedEffect(game.gameOver){if(game.gameOver)sounds.finish()}
+    LaunchedEffect(game.lines/4){if(game.itemMessage!=null)sounds.menu()}
     Column(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF284F3E),Color(0xFF10251D)))).padding(12.dp),horizontalAlignment=Alignment.CenterHorizontally){
-        Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){TextButton(back){Text("‹ 홈",color=Color.White)};Text("엄마의 블록 퍼즐",modifier=Modifier.weight(1f),color=Color(0xFFFFE0A3),fontSize=22.sp,fontWeight=FontWeight.Bold,textAlign=TextAlign.Center);IconButton(onClick={game.paused=!game.paused;sounds.menu();revision++}){Text(if(game.paused)"▶" else "Ⅱ",color=Color.White,fontSize=22.sp)}}
-        Card(Modifier.fillMaxWidth(),colors=CardDefaults.cardColors(containerColor=Color(0xAA244B3B)),shape=RoundedCornerShape(16.dp)){Row(Modifier.fillMaxWidth().padding(horizontal=16.dp,vertical=8.dp),verticalAlignment=Alignment.CenterVertically){listOf("점수" to game.score,"최고" to best,"레벨" to game.level).forEach{(label,value)->Column(Modifier.weight(1f),horizontalAlignment=Alignment.CenterHorizontally){Text(label,color=Color(0xFFBBD5C5),fontSize=12.sp);Text("$value",color=Color.White,fontWeight=FontWeight.Bold)}};Column(horizontalAlignment=Alignment.CenterHorizontally){Text("다음",color=Color(0xFFBBD5C5),fontSize=12.sp);Canvas(Modifier.size(42.dp)){val unit=size.minDimension/4;game.cells(game.next,0,0,0).forEach{drawRoundRect(blockColors[game.next],Offset(it.col*unit,it.row*unit),Size(unit-2,unit-2),CornerRadius(4f,4f))}}}}}
+        Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){TextButton(back){Text("‹ 홈",color=Color.White)};Text("엄마의 블록 퍼즐 · ${if(itemMode==true)"아이템전" else "노템전"}",modifier=Modifier.weight(1f),color=Color(0xFFFFE0A3),fontSize=20.sp,fontWeight=FontWeight.Bold,textAlign=TextAlign.Center);IconButton(onClick={game.paused=!game.paused;sounds.menu();revision++}){Text(if(game.paused)"▶" else "Ⅱ",color=Color.White,fontSize=22.sp)}}
+        Card(Modifier.fillMaxWidth(),colors=CardDefaults.cardColors(containerColor=Color(0xAA244B3B)),shape=RoundedCornerShape(16.dp)){Column(Modifier.fillMaxWidth().padding(horizontal=16.dp,vertical=7.dp)){Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){listOf("점수" to game.score,"최고" to best,"레벨" to game.level).forEach{(label,value)->Column(Modifier.weight(1f),horizontalAlignment=Alignment.CenterHorizontally){Text(label,color=Color(0xFFBBD5C5),fontSize=12.sp);Text("$value",color=Color.White,fontWeight=FontWeight.Bold)}};Column(horizontalAlignment=Alignment.CenterHorizontally){Text("다음",color=Color(0xFFBBD5C5),fontSize=12.sp);Canvas(Modifier.size(38.dp)){val unit=size.minDimension/4;game.cells(game.next,0,0,0).forEach{drawRoundRect(blockColors[game.next],Offset(it.col*unit,it.row*unit),Size(unit-2,unit-2),CornerRadius(4f,4f))}}}};Text("다음 레벨 ${game.level+1}까지 ${game.linesToNextLevel}줄",color=Color.White,fontSize=13.sp);LinearProgressIndicator({(game.lines%10)/10f},Modifier.fillMaxWidth().height(5.dp),color=Color(0xFFFFD166),trackColor=Color.White.copy(alpha=.15f));if(itemMode==true){game.itemMessage?.let{Text(it,color=Color(0xFFFFE0A3),fontSize=12.sp,maxLines=1)};Text("🎁 다음 아이템까지 ${game.linesToNextItem}줄",color=Color(0xFFFFE0A3),fontSize=12.sp)}}}
         Canvas(Modifier.weight(1f).aspectRatio(.5f).padding(10.dp)){
             val cw=size.width/game.width;val ch=size.height/game.height
             drawRect(Brush.verticalGradient(listOf(Color(0xFF142D24),Color(0xFF091A14))))
@@ -215,9 +234,10 @@ internal fun boardIndex(value:Float,length:Float,count:Int,margin:Float)=if(marg
             game.ghostCells().filter{it.row>=0}.forEach{val p=Offset(it.col*cw+2,it.row*ch+2);val s=Size(cw-4,ch-4);val corner=CornerRadius(minOf(cw,ch)*.18f);drawRoundRect(blockColors[game.piece].copy(alpha=.1f),p,s,corner);drawRoundRect(blockColors[game.piece].copy(alpha=.65f),p,s,corner,style=Stroke(2f))}
             game.cells().filter{it.row>=0}.forEach{block(it.row,it.col,blockColors[game.piece],true)}
         }
-        Row(Modifier.padding(bottom=6.dp),horizontalArrangement=Arrangement.spacedBy(7.dp)){BlockButton("←",true){game.move(-1,0);revision++};BlockButton("↻"){game.rotate();revision++};BlockButton("↓",true){game.softDrop();revision++};BlockButton("⇊"){game.hardDrop();sounds.block();revision++};BlockButton("→",true){game.move(1,0);revision++}}
-        if(game.gameOver)GameOverDialog("게임 끝!","점수 ${game.score} · 최고 점수 $best",onRestart={game.reset();revision++},onHome=home)
+        Row(Modifier.padding(bottom=6.dp),horizontalArrangement=Arrangement.spacedBy(7.dp)){BlockButton("←",true){game.move(-1,0);revision++};BlockButton("⇊"){game.hardDrop();sounds.block();revision++};BlockButton("↓",true){game.softDrop();revision++};BlockButton("↻"){game.rotate();revision++};BlockButton("→",true){game.move(1,0);revision++}}
+        if(game.gameOver)GameOverDialog("도전 끝!","동물 친구들이 응원하러 왔어요!\n점수 ${game.score} · 최고 점수 $best",false,onRestart={game.reset();revision++},onHome=home)
     }
+    if(itemMode==null)AlertDialog(onDismissRequest=home,title={Text("게임 방식을 골라 주세요")},text={Text("아이템전은 4줄을 지울 때마다 숲속 아이템이 자동으로 나와요.")},confirmButton={Button(onClick={itemMode=true;revision++}){Text("🎁 아이템전")}},dismissButton={OutlinedButton(onClick={itemMode=false;revision++}){Text("노템전")}})
 }
 @Composable private fun BlockButton(text:String,repeat:Boolean=false,action:()->Unit){val currentAction by rememberUpdatedState(action);var pressed by remember{mutableStateOf(false)};Surface(Modifier.size(58.dp).graphicsLayer{scaleX=if(pressed).93f else 1f;scaleY=scaleX}.semantics{role=Role.Button;onClick{currentAction();true}}.pointerInput(repeat){detectTapGestures(onPress={coroutineScope{pressed=true;currentAction();val job=if(repeat)launch{delay(160);while(true){currentAction();delay(55)}}else null;try{tryAwaitRelease()}finally{job?.cancel();pressed=false}}})},shape=RoundedCornerShape(16.dp),color=if(pressed)Color(0xFFF0A45A)else Color(0xFFD88B45),shadowElevation=if(pressed)2.dp else 6.dp){Box(Modifier.fillMaxSize(),contentAlignment=Alignment.Center){Text(text,fontSize=24.sp,color=Color.White)}}}
 private val blockColors=listOf(Color.Cyan,Color.Yellow,Color(0xFFAB47BC),Color.Green,Color.Red,Color.Blue,Color(0xFFFF9800))
