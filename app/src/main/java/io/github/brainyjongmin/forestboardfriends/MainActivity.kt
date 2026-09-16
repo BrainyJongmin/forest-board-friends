@@ -42,6 +42,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.Role
@@ -117,15 +118,16 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable private fun HomeScreen(name:String,onSelect:(GameKind)->Unit,onModel:()->Unit,onRename:(String)->Unit){
-    var editing by remember{mutableStateOf(false)};var draft by remember(name){mutableStateOf(name)}
+    var editing by remember{mutableStateOf(false)};var about by remember{mutableStateOf(false)};var draft by remember(name){mutableStateOf(name)};val uri=LocalUriHandler.current
     Box(Modifier.fillMaxSize(),contentAlignment=Alignment.TopCenter){Column(Modifier.widthIn(max=720.dp).fillMaxWidth().fillMaxHeight().verticalScroll(rememberScrollState()).padding(20.dp),horizontalAlignment=Alignment.CenterHorizontally){
         Image(painterResource(R.drawable.forest_friends),null,Modifier.fillMaxWidth().height(185.dp),contentScale=ContentScale.Fit)
         Text("$name, 오늘은 뭘 해볼까?",fontSize=25.sp,fontWeight=FontWeight.Bold,color=Bark,textAlign=TextAlign.Center)
         Spacer(Modifier.height(16.dp));GameKind.entries.take(4).chunked(2).forEach{row->Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(12.dp)){row.forEach{g->Card(Modifier.weight(1f).height(120.dp).clickable{onSelect(g)},shape=RoundedCornerShape(22.dp),colors=CardDefaults.cardColors(containerColor=Color.White)){Column(Modifier.fillMaxSize(),horizontalAlignment=Alignment.CenterHorizontally,verticalArrangement=Arrangement.Center){Text(g.emoji,fontSize=38.sp);Text(g.title,fontSize=21.sp,fontWeight=FontWeight.Bold,color=Forest)}}};if(row.size==1)Spacer(Modifier.weight(1f))};Spacer(Modifier.height(12.dp))}
         Card(Modifier.fillMaxWidth().height(92.dp).clickable{onSelect(GameKind.BLOCK)},colors=CardDefaults.cardColors(containerColor=Color(0xFFE9D9BC)),shape=RoundedCornerShape(22.dp)){Row(Modifier.fillMaxSize().padding(18.dp),verticalAlignment=Alignment.CenterVertically){Text("▦",fontSize=40.sp);Spacer(Modifier.width(16.dp));Column{Text("엄마의 블록 퍼즐",fontSize=20.sp,fontWeight=FontWeight.Bold,color=Bark);Text("숲속 레트로 무한 모드")}}}
-        Row(Modifier.padding(top=14.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)){OutlinedButton(onClick=onModel){Text("🦊 AI 코치")};OutlinedButton(onClick={editing=true}){Text("이름 바꾸기")}}
+        Row(Modifier.padding(top=14.dp),horizontalArrangement=Arrangement.spacedBy(8.dp)){OutlinedButton(onClick=onModel){Text("🦊 AI 코치")};OutlinedButton(onClick={editing=true}){Text("이름 바꾸기")};OutlinedButton(onClick={about=true}){Text("앱 정보")}}
     }}
     if(editing)AlertDialog(onDismissRequest={editing=false},title={Text("이름 바꾸기")},text={OutlinedTextField(draft,{draft=it.take(12)},singleLine=true)},confirmButton={Button(onClick={if(draft.trim().isNotEmpty()){onRename(draft.trim());editing=false}}){Text("저장")}},dismissButton={TextButton(onClick={editing=false}){Text("취소")}})
+    if(about)AlertDialog(onDismissRequest={about=false},title={Text("숲속 보드 친구들")},text={Column(verticalArrangement=Arrangement.spacedBy(8.dp)){Text("현재 버전 ${BuildConfig.VERSION_NAME}",fontWeight=FontWeight.Bold);Text("만든이: 은태 아빠");Text("Copyright © 2026 은태 아빠\n소스 코드: Apache License 2.0",fontSize=13.sp,color=Color.Gray);Text("최신 버전은 GitHub 릴리스에서 확인하고 설치할 수 있어요.")}},confirmButton={Button(onClick={uri.openUri("https://github.com/BrainyJongmin/forest-board-friends/releases/latest")}){Text("최신 버전 확인")}},dismissButton={TextButton(onClick={about=false}){Text("닫기")}})
 }
 
 @Composable private fun SetupScreen(kind:GameKind,one:Boolean,setOne:(Boolean)->Unit,difficulty:Difficulty,setDifficulty:(Difficulty)->Unit,size:Int,setSize:(Int)->Unit,back:()->Unit,start:()->Unit){
