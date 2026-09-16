@@ -96,16 +96,22 @@ class GoGame(override val rows: Int = 9) : BoardGame {
     }
     override fun undo(): Boolean { val old=history.removeLastOrNull()?:return false; board=old.board;previous=old.previous;passes=old.passes;captures=old.captures;currentPlayer=old.current;winner=null;return true }
     override fun hint(difficulty: Difficulty): GameMove? {
-        val candidates=legalMoves(); if(candidates.isEmpty()) return null
-        fun score(m:GameMove):Int { val copy=board.copyOf(); val gain=place(m.to,currentPlayer);val liberties=group(idx(m.to)).second;val contact=neighbors(m.to).count{board[it]!=0};board=copy;return gain*200+liberties*12+contact*8-abs(m.to.row-rows/2)-abs(m.to.col-cols/2) }
-        val sorted=candidates.sortedByDescending(::score); return if(difficulty==Difficulty.EASY) sorted.take(minOf(8,sorted.size)).random() else sorted.first()
+        val ranked=legalMoves().map{it to moveScore(it)}.sortedByDescending{it.second};if(ranked.isEmpty())return null
+        if(difficulty==Difficulty.NORMAL&&passes>0&&history.size>rows*rows/3&&ranked.first().second<80)return null
+        return if(difficulty==Difficulty.EASY)ranked.take(minOf(10,ranked.size)).random().first else ranked.first().first
     }
     private fun legal(p:Pos):Boolean {
         if(p.row !in 0 until rows || p.col !in 0 until cols || board[idx(p)]!=0 || winner!=null) return false
         val copy=board.copyOf(); place(p,currentPlayer); val ok=group(idx(p)).second>0 && (previous==null || !board.contentEquals(previous)); board=copy; return ok
     }
-    private fun place(p:Pos,owner:Int):Int{ board[idx(p)]=owner; var taken=0; neighbors(p).filter{board[it]==3-owner}.forEach{ val(g,l)=group(it); if(l==0){g.forEach{q->board[q]=0};taken+=g.size} };return taken }
+    private fun place(p:Pos,owner:Int):Int{board[idx(p)]=owner;var taken=0;val checked=mutableSetOf<Int>();for(start in neighbors(p))if(board[start]==3-owner&&start !in checked){val(g,l)=group(start);checked+=g;if(l==0){g.forEach{board[it]=0};taken+=g.size}};return taken}
     private fun group(start:Int):Pair<Set<Int>,Int>{ val seen=mutableSetOf<Int>();val liberties=mutableSetOf<Int>();val todo=ArrayDeque<Int>();todo+=start;val owner=board[start];while(todo.isNotEmpty()){val i=todo.removeFirst();if(!seen.add(i))continue;neighbors(Pos(i/cols,i%cols)).forEach{when(board[it]){0->liberties+=it;owner->todo+=it}}};return seen to liberties.size }
+    private fun moveScore(move:GameMove):Int{
+        val p=move.to;val around=neighbors(p);val copy=board.copyOf();val ownGroups=around.filter{board[it]==currentPlayer}.map(::group).distinctBy{it.first.minOrNull()};val saved=ownGroups.filter{it.second==1}.sumOf{it.first.size};val eye=around.isNotEmpty()&&around.all{board[it]==currentPlayer};val stones=board.count{it!=0}
+        val gain=place(p,currentPlayer);val own=group(idx(p));val attack=neighbors(p).filter{board[it]==3-currentPlayer}.map(::group).distinctBy{it.first.minOrNull()}.filter{it.second==1}.sumOf{it.first.size};board=copy
+        val stars=when(rows){9->listOf(2,4,6);13->listOf(3,6,9);19->listOf(3,9,15);else->listOf(rows/2)};val opening=if(stones<12)120-stars.minOf{r->stars.minOf{c->abs(p.row-r)+abs(p.col-c)}}*22 else 0
+        return gain*1_000+saved*220+attack*110+ownGroups.size*40+own.first.size*4+own.second*18+opening-(if(own.second==1&&gain==0)450 else 0)-(if(eye&&gain==0)700 else 0)
+    }
     private fun neighbors(p:Pos)=listOf(Pos(p.row-1,p.col),Pos(p.row+1,p.col),Pos(p.row,p.col-1),Pos(p.row,p.col+1)).filter{it.row in 0 until rows&&it.col in 0 until cols}.map(::idx)
     private fun score(){ val seen=mutableSetOf<Int>(); val total=intArrayOf(0,0,0); board.indices.filter{board[it]!=0}.forEach{total[board[it]]++}; for(i in board.indices) if(board[i]==0&&!seen.contains(i)){val area=mutableSetOf<Int>();val edge=mutableSetOf<Int>();val q=ArrayDeque<Int>();q+=i;while(q.isNotEmpty()){val x=q.removeFirst();if(!area.add(x))continue;neighbors(Pos(x/cols,x%cols)).forEach{if(board[it]==0)q+=it else edge+=board[it]}};seen+=area;if(edge.size==1)total[edge.first()]+=area.size}; winner=when{total[1]>total[2]+6.5->1;total[1]<total[2]+6.5->2;else->0} }
     private fun idx(p:Pos)=p.row*cols+p.col
@@ -122,21 +128,24 @@ class ChessGame : BoardGame {
     override fun play(move:GameMove):Boolean { val found=board.legalMoves().filter{pos(it.from)==move.from&&pos(it.to)==move.to}.maxByOrNull{pieceValue(it.promotion)}?:return false; return board.doMove(found) }
     override fun undo()=board.undoMove()!=null
     override fun hint(difficulty:Difficulty):GameMove? {
-        val moves=board.legalMoves();if(moves.isEmpty())return null
-        val side=board.sideToMove
-        fun score(move:ChessMove):Int{
-            if(!board.doMove(move))return Int.MIN_VALUE
-            val value=if(difficulty==Difficulty.NORMAL&&board.legalMoves().isNotEmpty())board.legalMoves().minOf{reply->board.doMove(reply);val leaf=evaluate(side);board.undoMove();leaf}else evaluate(side)
-            board.undoMove();return value
+        val analysis=board.clone();val moves=analysis.legalMoves();if(moves.isEmpty())return null
+        val side=analysis.sideToMove
+        fun search(depth:Int,low:Int,high:Int):Int{
+            if(depth==0||analysis.isMated||analysis.isDraw)return evaluate(analysis,side)
+            var alpha=low;var beta=high;val maximizing=analysis.sideToMove==side;var best=if(maximizing)-1_000_000 else 1_000_000
+            val ordered=analysis.legalMoves().sortedByDescending{pieceValue(analysis.getPiece(it.to))*10+pieceValue(it.promotion)}
+            for(move in ordered){analysis.doMove(move);val value=search(depth-1,alpha,beta);analysis.undoMove();if(maximizing){best=maxOf(best,value);alpha=maxOf(alpha,best)}else{best=minOf(best,value);beta=minOf(beta,best)};if(alpha>=beta)break}
+            return best
         }
-        val ranked=moves.sortedByDescending(::score)
+        val depth=if(difficulty==Difficulty.NORMAL)2 else 0
+        val ranked=moves.sortedByDescending{move->analysis.doMove(move);val value=search(depth,-1_000_000,1_000_000);analysis.undoMove();value}
         val move=if(difficulty==Difficulty.EASY)ranked.take(minOf(5,ranked.size)).random()else ranked.first()
         return GameMove(pos(move.from),pos(move.to))
     }
-    private fun evaluate(side:Side):Int{
-        if(board.isMated)return if(board.sideToMove==side)-100_000 else 100_000
-        if(board.isDraw)return 0
-        return board.boardToArray().mapIndexed{index,piece->
+    private fun evaluate(position:Board,side:Side):Int{
+        if(position.isMated)return if(position.sideToMove==side)-100_000 else 100_000
+        if(position.isDraw)return 0
+        return position.boardToArray().mapIndexed{index,piece->
             if(piece==Piece.NONE)0 else {
                 val row=index/8;val col=index%8
                 val center=(6-abs(row*2-7)-abs(col*2-7)).coerceAtLeast(0)

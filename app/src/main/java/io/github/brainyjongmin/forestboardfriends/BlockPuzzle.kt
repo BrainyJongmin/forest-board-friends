@@ -21,6 +21,8 @@ class BlockPuzzleGame(private val random: Random = Random.Default) {
     fun cells(type: Int = piece, rot: Int = rotation, r: Int = row, c: Int = col): List<Pos> =
         SHAPES[type][rot % SHAPES[type].size].map { Pos(r + it.row, c + it.col) }
 
+    fun ghostCells():List<Pos>{var landing=row;while(fits(rotation,landing+1,col))landing++;return cells(piece,rotation,landing,col)}
+
     fun move(dx: Int, dy: Int): Boolean {
         if (paused || gameOver || !fits(rotation, row + dy, col + dx)) return false
         row += dy; col += dx; return true

@@ -21,6 +21,18 @@ class GamesTest {
         assertFalse(g.play(GameMove(to=Pos(0,1))))
     }
 
+    @Test fun goRejectsSuicideAndImmediateKoRecapture(){
+        val suicide=GoGame(9)
+        listOf(Pos(0,1),Pos(8,8),Pos(1,0)).forEach{assertTrue(suicide.play(GameMove(to=it)))}
+        assertFalse(suicide.play(GameMove(to=Pos(0,0))))
+
+        val ko=GoGame(9)
+        listOf(Pos(0,1),Pos(1,1),Pos(1,0),Pos(0,2),Pos(2,1),Pos(2,2),Pos(8,8),Pos(1,3),Pos(1,2)).forEach{assertTrue(ko.play(GameMove(to=it)))}
+        assertNull(ko.cell(Pos(1,1)));assertFalse(ko.play(GameMove(to=Pos(1,1))))
+    }
+
+    @Test fun goEndsAndScoresAfterTwoPasses(){val g=GoGame(9);assertTrue(g.pass());assertTrue(g.pass());assertEquals(2,g.winner)}
+
     @Test fun chessAndJanggiOnlyOfferLegalBoardMoves(){
         val chess=ChessGame();assertEquals(20,chess.legalMoves().size)
         assertTrue(chess.legalMoves().all{it.from!!.row in 0..7&&it.to.row in 0..7})
@@ -54,8 +66,14 @@ class GamesTest {
         assertTrue(janggi.legalMoves(source).all{it.from==source})
     }
 
-    @Test fun blockPuzzleMovesAndResets(){
-        val g=BlockPuzzleGame(Random(1));val start=g.cells();assertTrue(g.move(-1,0));assertNotEquals(start,g.cells());g.hardDrop();assertTrue(g.board.any{it!=0});g.reset();assertTrue(g.board.all{it==0});assertEquals(0,g.score)
+    @Test fun chessQueenMovesDiagonallyAfterHerPawnClears(){
+        val chess=ChessGame()
+        assertTrue(chess.play(GameMove(Pos(6,4),Pos(4,4))));assertTrue(chess.play(GameMove(Pos(1,0),Pos(2,0))))
+        assertTrue(GameMove(Pos(7,3),Pos(3,7)) in chess.legalMoves(Pos(7,3)))
+    }
+
+    @Test fun blockPuzzleMovesGhostAndResets(){
+        val g=BlockPuzzleGame(Random(1));val start=g.cells();assertTrue(g.move(-1,0));assertNotEquals(start,g.cells());assertTrue(g.ghostCells().maxOf{it.row}>g.cells().maxOf{it.row});g.hardDrop();assertTrue(g.board.any{it!=0});g.reset();assertTrue(g.board.all{it==0});assertEquals(0,g.score)
     }
 
     @Test fun lineBoardsSnapTouchesToIntersections(){
