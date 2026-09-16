@@ -28,6 +28,32 @@ class GamesTest {
         assertTrue(janggi.legalMoves().all{it.to.row in 0..9&&it.to.col in 0..8})
     }
 
+    @Test fun hintsAreLegalAndDoNotCrashOnEmptyChessSquares(){
+        listOf<BoardGame>(ChessGame(),JanggiGame(),GoGame(),OmokGame()).forEach{game->
+            val before=game.currentPlayer
+            val hint=game.hint(Difficulty.NORMAL)
+            assertNotNull(hint);assertTrue(hint in game.legalMoves());assertEquals(before,game.currentPlayer)
+        }
+    }
+
+    @Test fun normalOmokBlocksAnImmediateLoss(){
+        val g=OmokGame()
+        listOf(Pos(7,7),Pos(0,0),Pos(7,8),Pos(0,1),Pos(7,9),Pos(0,2),Pos(1,0),Pos(0,3)).forEach{assertTrue(g.play(GameMove(to=it)))}
+        assertEquals(Pos(0,4),g.hint(Difficulty.NORMAL)?.to)
+    }
+
+    @Test fun normalOmokTakesAWinBeforeBlocking(){
+        val g=OmokGame()
+        listOf(Pos(7,7),Pos(0,0),Pos(7,8),Pos(0,1),Pos(7,9),Pos(0,2),Pos(7,10),Pos(0,3)).forEach{assertTrue(g.play(GameMove(to=it)))}
+        assertTrue(g.hint(Difficulty.NORMAL)?.to in setOf(Pos(7,6),Pos(7,11)))
+    }
+
+    @Test fun selectingChessAndJanggiPiecesFiltersDestinations(){
+        val chess=ChessGame();assertEquals(2,chess.legalMoves(Pos(6,4)).size)
+        val janggi=JanggiGame();val source=janggi.legalMoves().first().from!!
+        assertTrue(janggi.legalMoves(source).all{it.from==source})
+    }
+
     @Test fun blockPuzzleMovesAndResets(){
         val g=BlockPuzzleGame(Random(1));val start=g.cells();assertTrue(g.move(-1,0));assertNotEquals(start,g.cells());g.hardDrop();assertTrue(g.board.any{it!=0});g.reset();assertTrue(g.board.all{it==0});assertEquals(0,g.score)
     }
