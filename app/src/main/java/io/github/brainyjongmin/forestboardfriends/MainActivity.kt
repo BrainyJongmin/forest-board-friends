@@ -16,6 +16,8 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -73,16 +75,19 @@ private val Cream = Color(0xFFFFF8E8)
 private val Bark = Color(0xFF6D4C41)
 private class GameSounds{
     private val tone=runCatching{ToneGenerator(AudioManager.STREAM_MUSIC,45)}.getOrNull()
-    private val music=audioTrack(forestMelody(),true)?.apply{setVolume(.12f)}
+    private val boardMusic=audioTrack(forestMelody(),true)?.apply{setVolume(.12f)}
+    private val blockMusic=audioTrack(blockMelody(),true)?.apply{setVolume(.14f)}
     private val applause=audioTrack(applause(),false)?.apply{setVolume(.8f)}
     fun move(){tone?.startTone(ToneGenerator.TONE_PROP_BEEP,65)}
     fun menu(){tone?.startTone(ToneGenerator.TONE_PROP_ACK,90)}
     fun block(){tone?.startTone(ToneGenerator.TONE_PROP_BEEP2,100)}
-    fun music(play:Boolean){runCatching{if(play&&music?.playState!=AudioTrack.PLAYSTATE_PLAYING){music?.setPlaybackHeadPosition(0);music?.play()}else if(!play)music?.pause()}}
+    fun clear(lines:Int){tone?.startTone(if(lines>=4)ToneGenerator.TONE_CDMA_HIGH_L else ToneGenerator.TONE_PROP_ACK,220)}
+    fun music(block:Boolean?){runCatching{boardMusic?.pause();blockMusic?.pause();val active=when(block){true->blockMusic;false->boardMusic;null->null};active?.setPlaybackHeadPosition(0);active?.play()}}
     fun finish(){tone?.startTone(ToneGenerator.TONE_PROP_PROMPT,350);runCatching{applause?.pause();applause?.setPlaybackHeadPosition(0);applause?.play()}}
-    fun close(){tone?.release();music?.release();applause?.release()}
+    fun close(){tone?.release();boardMusic?.release();blockMusic?.release();applause?.release()}
     private fun audioTrack(samples:ShortArray,loop:Boolean)=runCatching{AudioTrack.Builder().setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_GAME).setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build()).setAudioFormat(AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_16BIT).setSampleRate(22_050).setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build()).setTransferMode(AudioTrack.MODE_STATIC).setBufferSizeInBytes(samples.size*2).build().apply{write(samples,0,samples.size);if(loop)setLoopPoints(0,samples.size,-1)}}.getOrNull()
     private fun forestMelody():ShortArray{val notes=intArrayOf(64,67,71,74,71,67,64,67,62,66,69,74,69,66,62,66,60,64,67,72,67,64,60,64,62,67,71,74,71,67,66,62);val beat=.23;val rate=22_050;return ShortArray((notes.size*beat*rate).toInt()){i->val step=(i/(beat*rate)).toInt().coerceAtMost(notes.lastIndex);val local=i/rate.toDouble()-step*beat;val f=440.0*2.0.pow((notes[step]-69)/12.0);val bass=440.0*2.0.pow((notes[step/4*4]-81)/12.0);val envelope=minOf(1.0,local/.018)*(1-local/beat*.18);((sin(2*PI*f*i/rate)+sin(PI*f*i/rate)*.22+sin(2*PI*bass*i/rate)*.3)*envelope*4_200).toInt().coerceIn(-32767,32767).toShort()}}
+    private fun blockMelody():ShortArray{val notes=intArrayOf(76,71,74,79,78,74,71,74,76,72,69,72,74,71,67,71,76,71,74,81,79,76,74,71,72,76,79,84,83,79,76,74,74,78,81,86,83,81,78,74,76,79,83,88,86,83,79,76,74,71,74,79,78,74,71,67,69,72,76,81,79,76,74,71);val beat=.115;val rate=22_050;return ShortArray((notes.size*beat*rate).toInt()){i->val step=(i/(beat*rate)).toInt().coerceAtMost(notes.lastIndex);val local=i/rate.toDouble()-step*beat;val f=440.0*2.0.pow((notes[step]-69)/12.0);val bass=440.0*2.0.pow((notes[step/8*8]-93)/12.0);val lead=if(sin(2*PI*f*i/rate)>=0)1.0 else -1.0;val pulse=sin(2*PI*(100-local*260)*local)*(1-local/beat);((lead*.45+sin(2*PI*f*i/rate)*.28+sin(2*PI*bass*i/rate)*.3+pulse*.28)*4_000).toInt().coerceIn(-32767,32767).toShort()}}
     private fun applause():ShortArray{val rate=22_050;val out=DoubleArray((2.4*rate).toInt());val random=Random(7);repeat(24){val start=((it*.09+random.nextDouble()*.18)*rate).toInt();val length=(.13*rate).toInt();var last=0.0;for(j in 0 until length)if(start+j<out.size){val noise=random.nextDouble()*2-1;val crisp=noise-last*.65;last=noise;out[start+j]+=crisp*(1-j.toDouble()/length).pow(2)*9_000}};return ShortArray(out.size){out[it].toInt().coerceIn(-24_000,24_000).toShort()}}
 }
 enum class GameKind(val title:String,val emoji:String){GO("바둑","⚫"),JANGGI("장기","將"),CHESS("체스","♞"),OMOK("오목","●"),BLOCK("엄마의 블록 퍼즐","▦")}
@@ -118,8 +123,8 @@ class MainActivity : ComponentActivity() {
     var onePlayer by remember{mutableStateOf(true)};var difficulty by remember{mutableStateOf(Difficulty.EASY)};var boardSize by remember{mutableIntStateOf(9)}
     var confirmGameExit by remember{mutableStateOf(false)};var lastBack by remember{mutableLongStateOf(0L)}
     val context=LocalContext.current;val coach=remember{CoachManager(context)};val sounds=remember{GameSounds()};DisposableEffect(Unit){onDispose{coach.close();sounds.close()}}
-    LaunchedEffect(page){sounds.music(page==Page.GAME||page==Page.BLOCK)}
-    DisposableEffect(page){val lifecycle=(context as ComponentActivity).lifecycle;val observer=LifecycleEventObserver{_,event->when(event){Lifecycle.Event.ON_START->sounds.music(page==Page.GAME||page==Page.BLOCK);Lifecycle.Event.ON_STOP->sounds.music(false);else->{}}};lifecycle.addObserver(observer);onDispose{lifecycle.removeObserver(observer)}}
+    LaunchedEffect(page){sounds.music(when(page){Page.GAME->false;Page.BLOCK->true;else->null})}
+    DisposableEffect(page){val lifecycle=(context as ComponentActivity).lifecycle;val observer=LifecycleEventObserver{_,event->when(event){Lifecycle.Event.ON_START->sounds.music(when(page){Page.GAME->false;Page.BLOCK->true;else->null});Lifecycle.Event.ON_STOP->sounds.music(null);else->{}}};lifecycle.addObserver(observer);onDispose{lifecycle.removeObserver(observer)}}
     LaunchedEffect(name){coach.speak("$name, 숲속 보드 친구들에 온 걸 환영해! 오늘도 즐겁게 놀아 보자!")}
     fun leaveGame(){if(!confirmGameExit)sounds.menu();confirmGameExit=true}
     fun open(next:Page){sounds.menu();page=next}
@@ -217,13 +222,17 @@ internal fun boardIndex(value:Float,length:Float,count:Int,margin:Float)=if(marg
 
 @Composable private fun BlockScreen(prefs:android.content.SharedPreferences,sounds:GameSounds,back:()->Unit,home:()->Unit){
     var itemMode by remember{mutableStateOf<Boolean?>(null)};val game=remember(itemMode){BlockPuzzleGame(itemsEnabled=itemMode==true)};var revision by remember{mutableIntStateOf(0)};var best by remember{mutableIntStateOf(prefs.getInt("block_best",0))}
+    var blockCheer by remember(game){mutableStateOf("준비됐지? 신나게 시작해 보자!")};val clearBurst=remember(game){Animatable(1f)}
     val glowMotion=rememberInfiniteTransition(label="blockGlow");val activeGlow by glowMotion.animateFloat(.72f,1f,infiniteRepeatable(tween(420),RepeatMode.Reverse),label="activeGlow")
-    LaunchedEffect(revision,game.paused,game.gameOver,itemMode){if(itemMode!=null&&!game.paused&&!game.gameOver){delay(game.dropDelay.toLong());if(!game.tick())sounds.block();if(game.score>best){best=game.score;prefs.edit().putInt("block_best",best).apply()};revision++}}
+    LaunchedEffect(revision,game.paused,game.gameOver,itemMode){if(itemMode!=null&&!game.paused&&!game.gameOver){delay(game.dropDelay.toLong());val before=game.clearEvent;if(!game.tick()&&game.clearEvent==before)sounds.block();if(game.score>best){best=game.score;prefs.edit().putInt("block_best",best).apply()};revision++}}
     LaunchedEffect(game.gameOver){if(game.gameOver)sounds.finish()}
     LaunchedEffect(game.lines/4){if(game.itemMessage!=null)sounds.menu()}
+    LaunchedEffect(game.clearEvent){if(game.clearEvent>0){sounds.clear(game.lastClearedRows.size);blockCheer=if(game.lastClearedRows.size>=4)"와우! 한 번에 네 줄! 완전 멋져!" else "팡! 줄을 지웠어. 리듬 좋은데!";clearBurst.snapTo(0f);clearBurst.animateTo(1f,tween(620,easing=LinearEasing))}}
+    LaunchedEffect(game.pieces){if(game.pieces>0&&game.pieces%5==0){delay(700);val cheers=listOf("와우, 착착 쌓이고 있어!","좋아! 지금 리듬 그대로 가자!","오, 빈칸을 잘 찾았네!","멋져! 다음 조각도 부탁해!");blockCheer=cheers[game.pieces/5%cheers.size]}}
     Column(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color(0xFF284F3E),Color(0xFF10251D)))).padding(12.dp),horizontalAlignment=Alignment.CenterHorizontally){
         Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){TextButton(back){Text("‹ 홈",color=Color.White)};Text("엄마의 블록 퍼즐 · ${if(itemMode==true)"아이템전" else "노템전"}",modifier=Modifier.weight(1f),color=Color(0xFFFFE0A3),fontSize=20.sp,fontWeight=FontWeight.Bold,textAlign=TextAlign.Center);IconButton(onClick={game.paused=!game.paused;sounds.menu();revision++}){Text(if(game.paused)"▶" else "Ⅱ",color=Color.White,fontSize=22.sp)}}
         Card(Modifier.fillMaxWidth(),colors=CardDefaults.cardColors(containerColor=Color(0xAA244B3B)),shape=RoundedCornerShape(16.dp)){Column(Modifier.fillMaxWidth().padding(horizontal=16.dp,vertical=7.dp)){Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){listOf("점수" to game.score,"최고" to best,"레벨" to game.level).forEach{(label,value)->Column(Modifier.weight(1f),horizontalAlignment=Alignment.CenterHorizontally){Text(label,color=Color(0xFFBBD5C5),fontSize=12.sp);Text("$value",color=Color.White,fontWeight=FontWeight.Bold)}};Column(horizontalAlignment=Alignment.CenterHorizontally){Text("다음",color=Color(0xFFBBD5C5),fontSize=12.sp);Canvas(Modifier.size(38.dp)){val unit=size.minDimension/4;game.cells(game.next,0,0,0).forEach{drawRoundRect(blockColors[game.next],Offset(it.col*unit,it.row*unit),Size(unit-2,unit-2),CornerRadius(4f,4f))}}}};Text("다음 레벨 ${game.level+1}까지 ${game.linesToNextLevel}줄",color=Color.White,fontSize=13.sp);LinearProgressIndicator({(game.lines%10)/10f},Modifier.fillMaxWidth().height(5.dp),color=Color(0xFFFFD166),trackColor=Color.White.copy(alpha=.15f));if(itemMode==true){game.itemMessage?.let{Text(it,color=Color(0xFFFFE0A3),fontSize=12.sp,maxLines=1)};Text("🎁 다음 아이템까지 ${game.linesToNextItem}줄",color=Color(0xFFFFE0A3),fontSize=12.sp)}}}
+        Text("🦊 $blockCheer",color=Color(0xFFFFE0A3),fontSize=13.sp,maxLines=1,modifier=Modifier.padding(top=4.dp))
         Canvas(Modifier.weight(1f).aspectRatio(.5f).padding(10.dp)){
             val cw=size.width/game.width;val ch=size.height/game.height
             drawRect(Brush.verticalGradient(listOf(Color(0xFF142D24),Color(0xFF091A14))))
@@ -231,10 +240,10 @@ internal fun boardIndex(value:Float,length:Float,count:Int,margin:Float)=if(marg
             for(r in 0..game.height)drawLine(Color.White.copy(alpha=.07f),Offset(0f,r*ch),Offset(size.width,r*ch),1f)
             fun block(row:Int,col:Int,color:Color,active:Boolean=false){val p=Offset(col*cw+1,row*ch+1);val s=Size(cw-2,ch-2);val corner=CornerRadius(minOf(cw,ch)*.18f);drawRoundRect(Color.Black.copy(alpha=.45f),Offset(p.x+2,p.y+3),s,corner);drawRoundRect(Brush.linearGradient(listOf(color.copy(alpha=if(active)activeGlow else .9f),color.copy(alpha=.62f))),p,s,corner);drawLine(Color.White.copy(alpha=if(active)activeGlow else .5f),Offset(p.x+4,p.y+4),Offset(p.x+s.width-4,p.y+4),2f);drawRoundRect(Color.White.copy(alpha=.18f),p,s,corner,style=Stroke(1.5f))}
             for(r in 0 until game.height)for(c in 0 until game.width){val value=game.board[r*game.width+c];if(value!=0)block(r,c,blockColors[value-1])}
-            game.ghostCells().filter{it.row>=0}.forEach{val p=Offset(it.col*cw+2,it.row*ch+2);val s=Size(cw-4,ch-4);val corner=CornerRadius(minOf(cw,ch)*.18f);drawRoundRect(blockColors[game.piece].copy(alpha=.1f),p,s,corner);drawRoundRect(blockColors[game.piece].copy(alpha=.65f),p,s,corner,style=Stroke(2f))}
             game.cells().filter{it.row>=0}.forEach{block(it.row,it.col,blockColors[game.piece],true)}
+            if(clearBurst.value<1f)for(r in game.lastClearedRows){val y=(r+.5f)*ch;val fade=1f-clearBurst.value;drawRect(Brush.horizontalGradient(listOf(Color.Transparent,Color.White.copy(alpha=fade),Color(0xFFFFD54F).copy(alpha=fade),Color.Transparent)),Offset(0f,y-ch*.45f),Size(size.width,ch*.9f));repeat(18){i->val x=(i*37%101)/100f*size.width;val dx=(if(i%2==0)-1 else 1)*clearBurst.value*cw*(1+i%4);val dy=(i%5-2)*clearBurst.value*ch*1.8f;drawCircle(blockColors[i%blockColors.size].copy(alpha=fade),2f+ch*.13f*fade,Offset(x+dx,y+dy))}}
         }
-        Row(Modifier.padding(bottom=6.dp),horizontalArrangement=Arrangement.spacedBy(7.dp)){BlockButton("←",true){game.move(-1,0);revision++};BlockButton("⇊"){game.hardDrop();sounds.block();revision++};BlockButton("↓",true){game.softDrop();revision++};BlockButton("↻"){game.rotate();revision++};BlockButton("→",true){game.move(1,0);revision++}}
+        Row(Modifier.padding(bottom=6.dp),horizontalArrangement=Arrangement.spacedBy(7.dp)){BlockButton("←",true){game.move(-1,0);revision++};BlockButton("⇊"){val before=game.clearEvent;game.hardDrop();if(game.clearEvent==before)sounds.block();revision++};BlockButton("↓",true){game.softDrop();revision++};BlockButton("↻"){game.rotate();revision++};BlockButton("→",true){game.move(1,0);revision++}}
         if(game.gameOver)GameOverDialog("도전 끝!","동물 친구들이 응원하러 왔어요!\n점수 ${game.score} · 최고 점수 $best",false,onRestart={game.reset();revision++},onHome=home)
     }
     if(itemMode==null)AlertDialog(onDismissRequest=home,title={Text("게임 방식을 골라 주세요")},text={Text("아이템전은 4줄을 지울 때마다 숲속 아이템이 자동으로 나와요.")},confirmButton={Button(onClick={itemMode=true;revision++}){Text("🎁 아이템전")}},dismissButton={OutlinedButton(onClick={itemMode=false;revision++}){Text("노템전")}})

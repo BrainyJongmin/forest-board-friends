@@ -72,14 +72,14 @@ class GamesTest {
         assertTrue(GameMove(Pos(7,3),Pos(3,7)) in chess.legalMoves(Pos(7,3)))
     }
 
-    @Test fun blockPuzzleMovesGhostAndResets(){
-        val g=BlockPuzzleGame(Random(1));val start=g.cells();assertTrue(g.move(-1,0));assertNotEquals(start,g.cells());assertTrue(g.ghostCells().maxOf{it.row}>g.cells().maxOf{it.row});g.hardDrop();assertTrue(g.board.any{it!=0});g.reset();assertTrue(g.board.all{it==0});assertEquals(0,g.score)
+    @Test fun blockPuzzleMovesAndResets(){
+        val g=BlockPuzzleGame(Random(1));val start=g.cells();assertTrue(g.move(-1,0));assertNotEquals(start,g.cells());g.hardDrop();assertTrue(g.board.any{it!=0});assertEquals(1,g.pieces);g.reset();assertTrue(g.board.all{it==0});assertEquals(0,g.score);assertEquals(0,g.pieces)
     }
 
     @Test fun blockPuzzleItemModeAwardsAnItemAndReportsGoals(){
         val g=BlockPuzzleGame(Random(2),true);assertEquals(10,g.linesToNextLevel);assertEquals(4,g.linesToNextItem)
         g.board.fill(1,(g.height-4)*g.width,g.height*g.width);g.hardDrop()
-        assertEquals(4,g.lines);assertNotNull(g.itemMessage);assertEquals(6,g.linesToNextLevel);assertEquals(4,g.linesToNextItem)
+        assertEquals(4,g.lines);assertNotNull(g.itemMessage);assertTrue(g.clearEvent>0);assertTrue(g.lastClearedRows.isNotEmpty());assertEquals(6,g.linesToNextLevel);assertEquals(4,g.linesToNextItem)
     }
 
     @Test fun lineBoardsSnapTouchesToIntersections(){

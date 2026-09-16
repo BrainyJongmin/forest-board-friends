@@ -13,6 +13,9 @@ class BlockPuzzleGame(private val random: Random = Random.Default, val itemsEnab
     val linesToNextItem get() = 4 - lines % 4
     val dropDelay get() = (750-(level-1)*55).coerceAtLeast(100)+(if(slowPieces>0)250 else 0)
     var itemMessage: String? = null; private set
+    var pieces = 0; private set
+    var clearEvent = 0; private set
+    var lastClearedRows: List<Int> = emptyList(); private set
     var gameOver = false; private set
     var paused = false
     private val bag = mutableListOf<Int>()
@@ -25,8 +28,6 @@ class BlockPuzzleGame(private val random: Random = Random.Default, val itemsEnab
 
     fun cells(type: Int = piece, rot: Int = rotation, r: Int = row, c: Int = col): List<Pos> =
         SHAPES[type][rot % SHAPES[type].size].map { Pos(r + it.row, c + it.col) }
-
-    fun ghostCells():List<Pos>{var landing=row;while(fits(rotation,landing+1,col))landing++;return cells(piece,rotation,landing,col)}
 
     fun move(dx: Int, dy: Int): Boolean {
         if (paused || gameOver || !fits(rotation, row + dy, col + dx)) return false
@@ -45,23 +46,23 @@ class BlockPuzzleGame(private val random: Random = Random.Default, val itemsEnab
     fun hardDrop() { var n=0; while(move(0,1))n++;score+=n*2;lock() }
 
     fun reset() {
-        board.fill(0); score=0; lines=0; gameOver=false; paused=false; bag.clear();slowPieces=0;itemMessage=null
+        board.fill(0); score=0; lines=0; gameOver=false; paused=false; bag.clear();slowPieces=0;itemMessage=null;pieces=0;clearEvent=0;lastClearedRows=emptyList()
         next=draw(); piece=draw(); rotation=0; row=0; col=3
     }
 
     private fun lock() {
         if(slowPieces>0)slowPieces--
         cells().filter { it.row >= 0 }.forEach { board[it.row * width + it.col] = piece + 1 }
-        val oldLines=lines
+        pieces++;val oldLines=lines;val fullRows=(0 until height).filter{r->(0 until width).all{board[r*width+it]!=0}}
         var cleared=0;var r=height-1
         while(r>=0)if((0 until width).all{board[r*width+it]!=0}){for(y in r downTo 1)for(x in 0 until width)board[y*width+x]=board[(y-1)*width+x];for(x in 0 until width)board[x]=0;cleared++}else r--
-        if(cleared>0){score+=intArrayOf(0,100,300,500,800)[cleared]*level;lines+=cleared}
+        if(cleared>0){score+=intArrayOf(0,100,300,500,800)[cleared]*level;lines+=cleared;lastClearedRows=fullRows;clearEvent++}
         if(itemsEnabled&&oldLines/4<lines/4)useRandomItem()
         piece=next;next=draw();rotation=0;row=0;col=3;gameOver=!fits(rotation,row,col)
     }
 
     private fun useRandomItem(){when(random.nextInt(3)){
-        0->{val target=(height-1 downTo 0).firstOrNull{r->(0 until width).any{board[r*width+it]!=0}};if(target!=null){for(y in target downTo 1)for(x in 0 until width)board[y*width+x]=board[(y-1)*width+x];for(x in 0 until width)board[x]=0};itemMessage="🧹 다람쥐 빗자루! 아랫줄을 정리했어요"}
+        0->{val target=(height-1 downTo 0).firstOrNull{r->(0 until width).any{board[r*width+it]!=0}};if(target!=null){for(y in target downTo 1)for(x in 0 until width)board[y*width+x]=board[(y-1)*width+x];for(x in 0 until width)board[x]=0;lastClearedRows=listOf(target);clearEvent++};itemMessage="🧹 다람쥐 빗자루! 아랫줄을 정리했어요"}
         1->{slowPieces=5;itemMessage="🐢 거북이 시간! 5조각 동안 천천히 내려와요"}
         else->{score+=500*level;itemMessage="⭐ 별 보너스! ${500*level}점을 받았어요"}
     }}
