@@ -79,7 +79,13 @@ class GamesTest {
     @Test fun blockPuzzleItemModeAwardsAnItemAndReportsGoals(){
         val g=BlockPuzzleGame(Random(2),true);assertEquals(10,g.linesToNextLevel);assertEquals(4,g.linesToNextItem)
         g.board.fill(1,(g.height-4)*g.width,g.height*g.width);g.hardDrop()
-        assertEquals(4,g.lines);assertNotNull(g.itemMessage);assertTrue(g.clearEvent>0);assertTrue(g.lastClearedRows.isNotEmpty());assertEquals(6,g.linesToNextLevel);assertEquals(4,g.linesToNextItem)
+        assertEquals(4,g.lines);assertNotNull(g.itemMessage);assertEquals(1,g.itemEvent);assertTrue(g.clearEvent>0);assertTrue(g.lastClearedRows.isNotEmpty());assertEquals(6,g.linesToNextLevel);assertEquals(4,g.linesToNextItem)
+    }
+
+    @Test fun blockPuzzleAddsGroundedChallengeAtNewLevel(){
+        val g=BlockPuzzleGame(Random(3));listOf(4,4,2).forEach{rows->g.board.fill(1,(g.height-rows)*g.width,g.height*g.width);g.hardDrop()}
+        assertEquals(2,g.level);assertEquals(1,g.levelEvent);assertEquals(1,g.levelBlocksAdded)
+        val gaps=(0 until g.width).filter{g.board[(g.height-1)*g.width+it]==0};assertEquals(2,gaps.size);assertEquals(gaps[0]+1,gaps[1])
     }
 
     @Test fun lineBoardsSnapTouchesToIntersections(){
