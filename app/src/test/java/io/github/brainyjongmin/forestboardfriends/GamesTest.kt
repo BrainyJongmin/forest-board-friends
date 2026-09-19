@@ -82,6 +82,11 @@ class GamesTest {
         assertEquals(4,g.lines);assertNotNull(g.itemMessage);assertEquals(1,g.itemEvent);assertTrue(g.clearEvent>0);assertTrue(g.lastClearedRows.isNotEmpty());assertEquals(6,g.linesToNextLevel);assertEquals(4,g.linesToNextItem)
     }
 
+    @Test fun blockPuzzleOffersVariedItems(){
+        val messages=(0..80).map{seed->BlockPuzzleGame(Random(seed),true).also{it.board.fill(1,(it.height-4)*it.width,it.height*it.width);it.hardDrop()}.itemMessage}.toSet()
+        assertTrue(messages.none{it==null});assertEquals(6,messages.size)
+    }
+
     @Test fun blockPuzzleAddsGroundedChallengeAtNewLevel(){
         val g=BlockPuzzleGame(Random(3));listOf(4,4,2).forEach{rows->g.board.fill(1,(g.height-rows)*g.width,g.height*g.width);g.hardDrop()}
         assertEquals(2,g.level);assertEquals(1,g.levelEvent);assertEquals(1,g.levelBlocksAdded)
