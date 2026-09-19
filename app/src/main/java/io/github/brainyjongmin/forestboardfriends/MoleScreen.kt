@@ -41,7 +41,7 @@ private val themeNames=listOf("햇살 정원","버섯 숲","별빛 숲")
             Text("숲속 두더지 팡!",fontSize=30.sp,fontWeight=FontWeight.Black,color=Color(0xFF3C654B))
             MoleBoard(emptyList(),0,0,Modifier.height(180.dp).widthIn(max=450.dp).fillMaxWidth(),preview=true){}
             Text("나오면 톡! 두 손으로 팡!",fontSize=22.sp,fontWeight=FontWeight.Bold)
-            Text("30초 안에 목표만큼 잡아 봐!\n황금 친구는 보너스 · 헬멧 친구는 두 번 톡",textAlign=TextAlign.Center,modifier=Modifier.padding(12.dp))
+            Text("30초 안에 목표만큼 잡아 봐!\n황금 친구는 보너스 · 헬멧 친구는 두 번 톡\n귀여운 토끼는 때리면 150점 감점!",textAlign=TextAlign.Center,modifier=Modifier.padding(12.dp))
             (0..2).forEach{theme->
                 Text(themeNames[theme],fontWeight=FontWeight.Bold,modifier=Modifier.padding(top=14.dp,bottom=6.dp))
                 Row(Modifier.widthIn(max=650.dp).fillMaxWidth(),horizontalArrangement=Arrangement.spacedBy(8.dp)) {
@@ -91,7 +91,7 @@ private val themeNames=listOf("햇살 정원","버섯 숲","별빛 숲")
             edit.apply()
         }
     }
-    val hit:(Int)->Unit={hole->if(running){val event=game.hit(hole);if(event!=null){revision++;if(event.type!=null){audio.play(when(event.type){MoleType.NORMAL->"hit";MoleType.HELMET->"helmet";MoleType.GOLD->"gold"},1f+(game.combo.coerceAtMost(20)*.008f));moleHaptic(view,event.type,prefs.getBoolean("game_vibration",true))}else audio.play("miss")}}}
+    val hit:(Int)->Unit={hole->if(running){val event=game.hit(hole);if(event!=null){revision++;if(event.type!=null){audio.play(when(event.type){MoleType.NORMAL->"hit";MoleType.HELMET->"helmet";MoleType.GOLD->"gold";MoleType.RABBIT->"miss"},1f+(game.combo.coerceAtMost(20)*.008f));moleHaptic(view,event.type,prefs.getBoolean("game_vibration",true))}else audio.play("miss")}}}
     val theme=(game.level-1)/4
     val panel:@Composable ()->Unit={Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(12.dp).background(Color(0xDD193D31),RoundedCornerShape(24.dp)).padding(12.dp),horizontalAlignment=Alignment.CenterHorizontally){
         Text("${themeNames[theme]} · ${game.level}단계",color=Color.White,fontWeight=FontWeight.Bold,fontSize=20.sp)
@@ -127,7 +127,7 @@ private val themeNames=listOf("햇살 정원","버섯 숲","별빛 숲")
                 drawRoundRect(Brush.verticalGradient(listOf(themes[theme][0].copy(alpha=.9f),themes[theme][1])),cornerRadius=CornerRadius(unit*.18f))
                 repeat(22){i->val p=Offset(((i*71+25)%300)/300f*size.width,((i*43+17)%300)/300f*size.height);drawCircle(if(theme==2)Color(0xAAFFE8A1)else Color.White.copy(alpha=.2f),unit*.018f,p)}
                 repeat(9){hole->val x=(hole%3+.5f)*unit;val y=(hole/3+.74f)*unit
-                    val mole=if(preview)Mole(hole,hole,if(hole==4)MoleType.GOLD else MoleType.NORMAL,0,Long.MAX_VALUE)else moles.firstOrNull{it.hole==hole}
+                    val mole=if(preview)Mole(hole,hole,when(hole){2->MoleType.RABBIT;4->MoleType.GOLD;else->MoleType.NORMAL},0,Long.MAX_VALUE)else moles.firstOrNull{it.hole==hole}
                     drawOval(Color(0x33412B25),Offset(x-unit*.39f,y-unit*.04f),Size(unit*.78f,unit*.24f))
                     drawOval(Color(0xFFB39168),Offset(x-unit*.38f,y-unit*.11f),Size(unit*.76f,unit*.27f))
                     drawOval(Color(0xFF3E2C2D),Offset(x-unit*.32f,y-unit*.09f),Size(unit*.64f,unit*.18f))
@@ -151,18 +151,19 @@ private val themeNames=listOf("햇살 정원","버섯 숲","별빛 숲")
                                 drawRoundRect(Color(0xFFEA8F91),Offset(x-unit*.02f,y-unit*.48f),Size(unit*.36f,unit*.15f),CornerRadius(unit*.055f))
                                 drawRoundRect(Color(0xFFFFC3B0),Offset(x-unit*.02f,y-unit*.48f),Size(unit*.06f,unit*.15f),CornerRadius(unit*.025f))
                             }
-                            if(mole.points>0)drawIntoCanvas{canvas->val paint=android.graphics.Paint().apply{isAntiAlias=true;color=android.graphics.Color.WHITE;textSize=unit*.15f;typeface=android.graphics.Typeface.DEFAULT_BOLD;textAlign=android.graphics.Paint.Align.CENTER;setShadowLayer(2f,1f,2f,android.graphics.Color.DKGRAY)};canvas.nativeCanvas.drawText("+${mole.points}",x,y-unit*(.53f+hitProgress*.22f),paint)}
+                            if(mole.points!=0)drawIntoCanvas{canvas->val paint=android.graphics.Paint().apply{isAntiAlias=true;color=if(mole.points<0)android.graphics.Color.rgb(210,62,78)else android.graphics.Color.WHITE;textSize=unit*.15f;typeface=android.graphics.Typeface.DEFAULT_BOLD;textAlign=android.graphics.Paint.Align.CENTER;setShadowLayer(2f,1f,2f,android.graphics.Color.WHITE)};canvas.nativeCanvas.drawText(if(mole.points>0)"+${mole.points}" else "${mole.points}",x,y-unit*(.53f+hitProgress*.22f),paint)}
                         }
                     }
                     if(theme==1){drawLine(Color(0xFFF8E5CB),Offset(x+unit*.38f,y-unit*.04f),Offset(x+unit*.38f,y-unit*.17f),unit*.045f);drawOval(Color(0xFFCE788D),Offset(x+unit*.29f,y-unit*.23f),Size(unit*.18f,unit*.12f))}
                 }
             }
-            if(!preview)Column(Modifier.fillMaxSize()){repeat(3){r->Row(Modifier.weight(1f)){repeat(3){c->val hole=r*3+c;Box(Modifier.weight(1f).fillMaxHeight().testTag("mole-hole-$hole").semantics{contentDescription="${hole+1}번 두더지 구멍";stateDescription=if(moles.any{it.hole==hole&&it.caughtAt==null})"등장" else "빈 구멍";role=Role.Button;onClick{latestHit(hole);true}})}}}}
+            if(!preview)Column(Modifier.fillMaxSize()){repeat(3){r->Row(Modifier.weight(1f)){repeat(3){c->val hole=r*3+c;Box(Modifier.weight(1f).fillMaxHeight().testTag("mole-hole-$hole").semantics{contentDescription="${hole+1}번 두더지 구멍";stateDescription=moles.firstOrNull{it.hole==hole&&it.caughtAt==null}?.let{if(it.type==MoleType.RABBIT)"토끼" else "등장"}?:"빈 구멍";role=Role.Button;onClick{latestHit(hole);true}})}}}}
         }
     }
 }
 
 private fun DrawScope.moleCharacter(center:Offset,u:Float,type:MoleType,hits:Int,blink:Boolean,struck:Boolean,theme:Int){
+    if(type==MoleType.RABBIT){rabbitCharacter(center,u,blink,struck);return}
     val body=if(type==MoleType.GOLD)Color(0xFFFFCC69)else if(theme==2)Color(0xFFB899CD)else Color(0xFFC99978)
     drawCircle(Color(0xFF865E56),u*.093f,center+Offset(-u*.20f,-u*.16f));drawCircle(Color(0xFF865E56),u*.093f,center+Offset(u*.20f,-u*.16f))
     drawCircle(Color(0xFFE6AAA0),u*.054f,center+Offset(-u*.20f,-u*.16f));drawCircle(Color(0xFFE6AAA0),u*.054f,center+Offset(u*.20f,-u*.16f))
@@ -178,5 +179,12 @@ private fun DrawScope.moleCharacter(center:Offset,u:Float,type:MoleType,hits:Int
     drawArc(ink,10f,160f,false,center+Offset(-u*.053f,u*.04f),Size(u*.106f,u*.09f),style=Stroke(u*.012f))
     if(type==MoleType.GOLD){star(center+Offset(0f,-u*.26f),u*.105f,Color(0xFFFFF1B2))}
     if(type==MoleType.HELMET&&hits==0){drawArc(Color(0xFF75BCCB),180f,180f,true,center-Offset(u*.265f,u*.33f),Size(u*.53f,u*.29f));drawRoundRect(Color(0xFF4A94A7),center-Offset(u*.29f,u*.19f),Size(u*.58f,u*.05f),CornerRadius(u*.025f));drawCircle(Color(0xFFFFEBA1),u*.05f,center+Offset(0f,-u*.24f))}
+}
+private fun DrawScope.rabbitCharacter(center:Offset,u:Float,blink:Boolean,struck:Boolean){
+    val fur=Color(0xFFFFF2E7);val pink=Color(0xFFF2A9AE);val ink=Color(0xFF513D4A)
+    for(sign in listOf(-1,1)){val x=center.x+sign*u*.14f;drawOval(fur,Offset(x-u*.065f,center.y-u*.43f),Size(u*.13f,u*.34f));drawOval(pink,Offset(x-u*.032f,center.y-u*.39f),Size(u*.064f,u*.25f))}
+    drawOval(fur,center-Offset(u*.255f,u*.22f),Size(u*.51f,u*.59f));drawCircle(pink,u*.042f,center+Offset(-u*.17f,u*.04f));drawCircle(pink,u*.042f,center+Offset(u*.17f,u*.04f))
+    for(sign in listOf(-1,1)){val eye=center+Offset(sign*u*.09f,-u*.035f);if(blink||struck)drawLine(ink,eye-Offset(u*.03f,0f),eye+Offset(u*.03f,0f),u*.015f)else{drawOval(ink,eye-Offset(u*.022f,u*.035f),Size(u*.044f,u*.07f));drawCircle(Color.White,u*.009f,eye+Offset(u*.005f,-u*.014f))}}
+    drawCircle(pink,u*.045f,center+Offset(0f,u*.025f));drawArc(ink,15f,150f,false,center+Offset(-u*.052f,u*.04f),Size(u*.104f,u*.09f),style=Stroke(u*.012f));drawOval(fur,center+Offset(-u*.23f,u*.21f),Size(u*.16f,u*.08f));drawOval(fur,center+Offset(u*.07f,u*.21f),Size(u*.16f,u*.08f))
 }
 private fun DrawScope.star(center:Offset,radius:Float,color:Color){val path=Path();repeat(10){i->val a=-PI/2+i*PI/5;val r=if(i%2==0)radius else radius*.45f;val p=center+Offset(cos(a).toFloat()*r,sin(a).toFloat()*r);if(i==0)path.moveTo(p.x,p.y)else path.lineTo(p.x,p.y)};path.close();drawPath(path,color)}

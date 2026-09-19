@@ -41,7 +41,7 @@ internal class MoleAudio(context:Context, private val musicVolume:Float, private
 
 internal fun moleHaptic(view:View,type:MoleType,enabled:Boolean) {
     if(!enabled || !view.isHapticFeedbackEnabled || Settings.System.getInt(view.context.contentResolver,Settings.System.HAPTIC_FEEDBACK_ENABLED,1)==0)return
-    val constant=when(type){MoleType.NORMAL->HapticFeedbackConstants.KEYBOARD_TAP;MoleType.HELMET->HapticFeedbackConstants.CONTEXT_CLICK;MoleType.GOLD->HapticFeedbackConstants.CONFIRM}
+    val constant=when(type){MoleType.NORMAL->HapticFeedbackConstants.KEYBOARD_TAP;MoleType.HELMET,MoleType.RABBIT->HapticFeedbackConstants.CONTEXT_CLICK;MoleType.GOLD->HapticFeedbackConstants.CONFIRM}
     if(view.performHapticFeedback(constant))return
     val vibrator=view.context.getSystemService(VibratorManager::class.java)?.defaultVibrator?:return
     if(vibrator.hasVibrator())runCatching{

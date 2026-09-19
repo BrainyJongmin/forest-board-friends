@@ -2,7 +2,7 @@ package io.github.brainyjongmin.forestboardfriends
 
 import kotlin.random.Random
 
-enum class MoleType { NORMAL, GOLD, HELMET }
+enum class MoleType { NORMAL, GOLD, HELMET, RABBIT }
 enum class MolePhase { READY, PLAYING, FINISHED }
 data class Mole(val id:Int, val hole:Int, val type:MoleType, val born:Long, val expires:Long,
     val hits:Int=0, val hitAt:Long=-1, val caughtAt:Long?=null, val points:Int=0)
@@ -40,9 +40,9 @@ class MoleGame(val level:Int, private val random:Random=Random.Default) {
             if(time+lifetime<=33_000 && moles.size<3) {
                 val free=(0..8).filter{hole->moles.none{it.hole==hole}}
                 val roll=random.nextInt(100)
-                val type=when {level>=5 && roll<15->MoleType.HELMET;level>=3 && roll in 15..29->MoleType.GOLD;else->MoleType.NORMAL}
+                val type=when {level>=2 && roll<12->MoleType.RABBIT;level>=5 && roll<27->MoleType.HELMET;level>=3 && roll in 27..41->MoleType.GOLD;else->MoleType.NORMAL}
                 moles=moles+Mole(nextId++,free.random(random),type,time,time+lifetime)
-                spawned++
+                if(type!=MoleType.RABBIT)spawned++
             }
             nextSpawn+=interval
         }
@@ -51,7 +51,7 @@ class MoleGame(val level:Int, private val random:Random=Random.Default) {
     }
 
     private fun expire() {
-        if(moles.any{it.caughtAt==null && time>=it.expires})combo=0
+        if(moles.any{it.type!=MoleType.RABBIT && it.caughtAt==null && time>=it.expires})combo=0
         moles=moles.filter{time<(it.caughtAt?.plus(260)?:it.expires)}
     }
 
@@ -60,13 +60,18 @@ class MoleGame(val level:Int, private val random:Random=Random.Default) {
         val mole=moles.firstOrNull{it.hole==hole}
         if(mole?.caughtAt!=null)return null
         if(mole==null) {combo=0;score=(score-20).coerceAtLeast(0);return MoleHit(null)}
+        if(mole.type==MoleType.RABBIT) {
+            combo=0;score=(score-150).coerceAtLeast(0)
+            moles=moles.map{if(it.id==mole.id)it.copy(hits=1,hitAt=time,caughtAt=time,points=-150)else it}
+            return MoleHit(MoleType.RABBIT,true,-150)
+        }
         // One helmet strike per physical press, with a tiny guard against simultaneous duplicate pointers.
         if(mole.hitAt>=0 && time-mole.hitAt<70)return null
         val finished=mole.type!=MoleType.HELMET || mole.hits==1
         var points=0
         if(finished) {
             caught++;combo++;maxCombo=maxOf(combo,maxCombo)
-            val base=when(mole.type){MoleType.NORMAL->100;MoleType.HELMET->150;MoleType.GOLD->300}
+            val base=when(mole.type){MoleType.NORMAL->100;MoleType.HELMET->150;MoleType.GOLD->300;MoleType.RABBIT->error("handled above")}
             points=base*(2+(combo/5).coerceAtMost(4))/2;score+=points
         }
         moles=moles.map{if(it.id==mole.id)it.copy(hits=it.hits+1,hitAt=time,caughtAt=if(finished)time else null,points=points)else it}

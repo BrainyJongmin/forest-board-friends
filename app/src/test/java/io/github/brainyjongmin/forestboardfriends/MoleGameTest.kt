@@ -22,9 +22,14 @@ class MoleGameTest {
     @Test fun allStagesAreWinnableAndPerfectPlayGetsThreeStars() {
         for(level in 1..12){
             val g=MoleGame(level,Random(level))
-            while(g.phase!=MolePhase.FINISHED){g.advance(80);assertTrue(g.moles.size<=3);assertEquals(g.moles.size,g.moles.map{it.hole}.toSet().size);g.moles.filter{it.caughtAt==null}.forEach{g.hit(it.hole)}}
+            while(g.phase!=MolePhase.FINISHED){g.advance(80);assertTrue(g.moles.size<=3);assertEquals(g.moles.size,g.moles.map{it.hole}.toSet().size);g.moles.filter{it.caughtAt==null&&it.type!=MoleType.RABBIT}.forEach{g.hit(it.hole)}}
             assertTrue("Level $level",g.cleared);assertEquals(3,g.stars);assertEquals(g.spawned,g.caught);assertTrue(g.maxCombo>=g.target)
         }
+    }
+    @Test fun rabbitIsCuteButCostsPointsAndNotProgress() {
+        val g=(0..500).map{MoleGame(2,Random(it)).apply{advance(3000);moles.singleOrNull()?.takeIf{m->m.type==MoleType.NORMAL}?.let{m->hit(m.hole)};advance(interval.toLong())}}.first{it.score==100&&it.moles.any{m->m.type==MoleType.RABBIT}}
+        val rabbit=g.moles.first{it.type==MoleType.RABBIT}
+        assertEquals(MoleHit(MoleType.RABBIT,true,-150),g.hit(rabbit.hole));assertEquals(0,g.score);assertEquals(1,g.caught);assertEquals(1,g.spawned);assertEquals(0,g.combo)
     }
     @Test fun missesResetComboAndNoNegativeScores() {
         val g=MoleGame(1,Random(2));g.advance(3000);val hole=g.moles.single().hole;g.hit(hole)
