@@ -44,9 +44,9 @@ class BlockPuzzleGame(private val random: Random = Random.Default, val itemsEnab
         return false
     }
 
-    fun tick(): Boolean { if (move(0, 1)) return true; lock(); return false }
-    fun softDrop() { if (move(0, 1)) score++ else lock() }
-    fun hardDrop() { var n=0; while(move(0,1))n++;score+=n*2;lock() }
+    fun tick(): Boolean { if(paused||gameOver)return false;if (move(0, 1)) return true; lock(); return false }
+    fun softDrop() { if(paused||gameOver)return;if (move(0, 1)) score++ else lock() }
+    fun hardDrop() { if(paused||gameOver)return;var n=0; while(move(0,1))n++;score+=n*2;lock() }
 
     fun reset() {
         board.fill(0); score=0; lines=0; gameOver=false; paused=false; bag.clear();slowPieces=0;itemMessage=null;itemEvent=0;pieces=0;clearEvent=0;lastClearedRows=emptyList();levelEvent=0;levelBlocksAdded=0

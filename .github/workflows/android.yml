@@ -24,7 +24,7 @@ jobs:
           packages: ''
       - uses: gradle/actions/setup-gradle@v6
       - run: sdkmanager "platforms;android-37.2" "build-tools;37.0.0"
-      - run: chmod +x gradlew && ./gradlew testDebugUnitTest lintDebug assembleDebug
+      - run: chmod +x gradlew && ./gradlew testDebugUnitTest lintDebug assembleDebug assembleDebugAndroidTest
       - uses: actions/upload-artifact@v6
         with:
           name: forest-board-friends-debug

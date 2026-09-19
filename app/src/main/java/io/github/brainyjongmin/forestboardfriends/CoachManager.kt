@@ -52,7 +52,9 @@ class CoachManager(private val context: Context) : TextToSpeech.OnInitListener {
 
     private suspend fun ensureEngine():Engine{engine?.let{return it};status="AI 코치 준비 중...";return withContext(Dispatchers.IO){Engine(EngineConfig(modelPath=model.absolutePath,backend=Backend.CPU(),cacheDir=context.cacheDir.absolutePath)).also{it.initialize();engine=it}}.also{status="모델 준비 완료"}}
     private fun clean(raw:String)=raw.replace(Regex("<[^>]+>"),"").replace(Regex("https?://\\S+"),"").trim().take(600)
-    fun speak(text:String){if(ttsReady)tts.speak(text,TextToSpeech.QUEUE_FLUSH,null,"coach") else pendingSpeech=text}
+    private var listening=false
+    fun setListening(value:Boolean){listening=value;if(value){pendingSpeech=null;tts.stop()}}
+    fun speak(text:String){if(listening)return;if(ttsReady)tts.speak(text,TextToSpeech.QUEUE_FLUSH,null,"coach") else pendingSpeech=text}
     fun deleteModel(){engine?.close();engine=null;history.clear();model.delete();temp.delete();status="모델을 받으면 더 자연스럽게 설명해 줘요."}
     fun close(){scope.cancel();engine?.close();tts.stop();tts.shutdown()}
     companion object{

@@ -76,6 +76,15 @@ class GamesTest {
         val g=BlockPuzzleGame(Random(1));val start=g.cells();assertTrue(g.move(-1,0));assertNotEquals(start,g.cells());g.hardDrop();assertTrue(g.board.any{it!=0});assertEquals(1,g.pieces);g.reset();assertTrue(g.board.all{it==0});assertEquals(0,g.score);assertEquals(0,g.pieces)
     }
 
+    @Test fun pausedBlockControlsNeverLockAndRotationDoesNotPreventTicks(){
+        val g=BlockPuzzleGame(Random(1));g.paused=true
+        repeat(8){g.rotate();g.softDrop();g.hardDrop();g.tick()}
+        assertEquals(0,g.pieces);assertTrue(g.board.all{it==0});assertEquals(0,g.row)
+        g.paused=false
+        repeat(3){repeat(10){g.rotate()};g.tick()}
+        assertEquals(3,g.row)
+    }
+
     @Test fun blockPuzzleItemModeAwardsAnItemAndReportsGoals(){
         val g=BlockPuzzleGame(Random(2),true);assertEquals(10,g.linesToNextLevel);assertEquals(4,g.linesToNextItem)
         g.board.fill(1,(g.height-4)*g.width,g.height*g.width);g.hardDrop()

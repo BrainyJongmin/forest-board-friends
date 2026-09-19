@@ -12,8 +12,8 @@ android {
         applicationId = "io.github.brainyjongmin.forestboardfriends"
         minSdk = 31
         targetSdk = 37
-        versionCode = 11
-        versionName = "1.0.10"
+        versionCode = 12
+        versionName = "1.0.11"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -47,6 +47,7 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.ui:ui-tooling-preview")
     debugImplementation("androidx.compose.ui:ui-tooling")
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     implementation("com.github.bhlangonijr:chesslib:1.3.7")
     implementation("com.google.ai.edge.litertlm:litertlm-android:0.17.0")
     testImplementation("junit:junit:4.13.2")
